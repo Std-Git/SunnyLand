@@ -1,4 +1,20 @@
-<!doctypehtml><html lang=en-us><head><meta charset=utf-8><meta content="text/html; charset=utf-8"http-equiv=Content-Type><title>SunnyLand</title><style>body{margin:0;padding:0;background-color:#000;overflow:hidden;display:flex;justify-content:center;align-items:center;height:100vh;width:100vw}canvas.emscripten{border:0 none;background-color:#000;display:block}</style></head><body><canvas class=emscripten id=canvas oncontextmenu=event.preventDefault()></canvas><script>var Module={preRun:[],postRun:[],print:function(e){arguments.length>1&&(e=Array.prototype.slice.call(arguments).join(" ")),console.log(e)},printErr:function(e){arguments.length>1&&(e=Array.prototype.slice.call(arguments).join(" ")),console.error(e)},canvas:function(){var e=document.getElementById("canvas");return e.addEventListener("webglcontextlost",(function(e){alert("WebGL context lost. You will need to reload the page."),e.preventDefault()}),!1),e}(),setStatus:function(e){e&&console.log(e)},totalDependencies:0,monitorRunDependencies:function(e){this.totalDependencies=Math.max(this.totalDependencies,e)},
+<!doctypehtml><html lang=en-us><head><meta charset=utf-8><meta content="text/html; charset=utf-8"http-equiv=Content-Type>
+<!-- ====== 新增：视口设置，让手机浏览器按实际宽度渲染 ====== -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SunnyLand</title>
+<style>
+body{margin:0;padding:0;background-color:#000;overflow:hidden;display:flex;justify-content:center;align-items:center;height:100vh;width:100vw}
+canvas.emscripten{
+  border:0 none;
+  background-color:#000;
+  display:block;
+  /* ====== 新增：自适应屏幕，保持宽高比，全部内容可见 ====== */
+  width:100vw;
+  height:100vh;
+  object-fit:contain;
+}
+</style>
+</head><body><canvas class=emscripten id=canvas oncontextmenu=event.preventDefault()></canvas><script>var Module={preRun:[],postRun:[],print:function(e){arguments.length>1&&(e=Array.prototype.slice.call(arguments).join(" ")),console.log(e)},printErr:function(e){arguments.length>1&&(e=Array.prototype.slice.call(arguments).join(" ")),console.error(e)},canvas:function(){var e=document.getElementById("canvas");return e.addEventListener("webglcontextlost",(function(e){alert("WebGL context lost. You will need to reload the page."),e.preventDefault()}),!1),e}(),setStatus:function(e){e&&console.log(e)},totalDependencies:0,monitorRunDependencies:function(e){this.totalDependencies=Math.max(this.totalDependencies,e)},
 // ========== 新增关键代码：强制从 CDN 加载 .data 和 .wasm ==========
 locateFile: function(path, prefix) {
     if (path.endsWith('.data') || path.endsWith('.wasm')) {
