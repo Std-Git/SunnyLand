@@ -1,1 +1,62 @@
-<!doctypehtml><html lang=en-us><head><meta charset=utf-8><meta content="text/html; charset=utf-8"http-equiv=Content-Type><title>SunnyLand</title><style>body{margin:0;padding:0;background-color:#000;overflow:hidden;display:flex;justify-content:center;align-items:center;height:100vh;width:100vw}canvas.emscripten{border:0 none;background-color:#000;display:block}</style></head><body><canvas class=emscripten id=canvas oncontextmenu=event.preventDefault()></canvas><script>var Module={preRun:[],postRun:[],print:function(e){arguments.length>1&&(e=Array.prototype.slice.call(arguments).join(" ")),console.log(e)},printErr:function(e){arguments.length>1&&(e=Array.prototype.slice.call(arguments).join(" ")),console.error(e)},canvas:function(){var e=document.getElementById("canvas");return e.addEventListener("webglcontextlost",(function(e){alert("WebGL context lost. You will need to reload the page."),e.preventDefault()}),!1),e}(),setStatus:function(e){e&&console.log(e)},totalDependencies:0,monitorRunDependencies:function(e){this.totalDependencies=Math.max(this.totalDependencies,e)}};window.onerror=function(e){console.error("Exception thrown: ",e)}</script><script async src=SunnyLand-Emscripten.js></script></body></html>
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>SunnyLand</title>
+    <style>
+        /* 全局重置，消除默认边距和滚动 */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            touch-action: none;    /* 消除触摸延迟 */
+        }
+        canvas.emscripten {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            object-fit: contain;   /* 保持宽高比，完整显示，黑边填充 */
+            background: #000;
+            touch-action: none;    /* 进一步消除触摸延迟 */
+        }
+        /* 针对横竖屏不同比例，确保canvas居中 */
+        @media (orientation: landscape) {
+            canvas.emscripten { width: 100vw; height: 100vh; }
+        }
+        @media (orientation: portrait) {
+            canvas.emscripten { width: 100vw; height: 100vh; }
+        }
+    </style>
+</head>
+<body>
+    <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+    <script>
+        // 原有 Module 定义保持不变
+        var Module = {
+            preRun: [],
+            postRun: [],
+            print: function(e) { if (arguments.length > 1) e = Array.prototype.slice.call(arguments).join(" "); console.log(e); },
+            printErr: function(e) { if (arguments.length > 1) e = Array.prototype.slice.call(arguments).join(" "); console.error(e); },
+            canvas: (function() {
+                var canvas = document.getElementById('canvas');
+                canvas.addEventListener('webglcontextlost', function(e) {
+                    alert('WebGL context lost. You will need to reload the page.');
+                    e.preventDefault();
+                }, false);
+                return canvas;
+            })(),
+            setStatus: function(e) { if (e) console.log(e); },
+            totalDependencies: 0,
+            monitorRunDependencies: function(e) { this.totalDependencies = Math.max(this.totalDependencies, e); }
+        };
+        window.onerror = function(e) { console.error('Exception thrown: ', e); };
+    </script>
+    <script async src="SunnyLand-Emscripten.js"></script>
+</body>
+</html>
