@@ -37,12 +37,27 @@
 <body>
     <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
     <script>
-        // 原有 Module 定义保持不变
+        // 1. 定义 CDN 基础路径（请确保分支名 @main 与你仓库一致）
+        const CDN_BASE = 'https://cdn.jsdelivr.net/gh/Std-Git/SunnyLand@master/';
+
+        // 原有 Module 定义保持不变，仅增加 locateFile
         var Module = {
             preRun: [],
             postRun: [],
-            print: function(e) { if (arguments.length > 1) e = Array.prototype.slice.call(arguments).join(" "); console.log(e); },
-            printErr: function(e) { if (arguments.length > 1) e = Array.prototype.slice.call(arguments).join(" "); console.error(e); },
+            
+            // 2. 关键：告诉 Emscripten 去 CDN 下载 .wasm 和 .data 文件
+            locateFile: function(filename) {
+                return CDN_BASE + filename;
+            },
+
+            print: function(e) { 
+                if (arguments.length > 1) e = Array.prototype.slice.call(arguments).join(" "); 
+                console.log(e); 
+            },
+            printErr: function(e) { 
+                if (arguments.length > 1) e = Array.prototype.slice.call(arguments).join(" "); 
+                console.error(e); 
+            },
             canvas: (function() {
                 var canvas = document.getElementById('canvas');
                 canvas.addEventListener('webglcontextlost', function(e) {
@@ -57,6 +72,8 @@
         };
         window.onerror = function(e) { console.error('Exception thrown: ', e); };
     </script>
-    <script async src="SunnyLand-Emscripten.js"></script>
+    
+    <!-- 3. 胶水代码也通过 CDN 加载 -->
+    <script async src="https://cdn.jsdelivr.net/gh/Std-Git/SunnyLand@master/SunnyLand-Emscripten.js"></script>
 </body>
 </html>
