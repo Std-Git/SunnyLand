@@ -2,50 +2,93 @@
 <html lang="zh-CN">
 <head>
     <meta charset="utf-8">
+    <!-- 1. 彻底禁止浏览器缩放、双击放大、iOS 安全区适配 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>SunnyLand</title>
     <style>
-        /* 全局重置，消除默认边距和滚动 */
+        /* 全局重置 */
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        
         html, body {
-            width: 100%;
-            height: 100%;
+            width: 100%; height: 100%;
             overflow: hidden;
             background: #000;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            touch-action: none;    /* 消除触摸延迟 */
+            display: flex; justify-content: center; align-items: center;
+            
+            /* 2. 核心触摸防护 */
+            touch-action: none;             /* 禁用所有原生手势（平移、缩放、双击） */
+            -webkit-touch-callout: none;    /* 禁用 iOS 长按弹出菜单 */
+            -webkit-user-select: none;      /* 禁用文本选择 */
+            user-select: none;
+            overscroll-behavior: none;      /* 禁用 iOS/Android 橡皮筋回弹 */
         }
+
+        /* Canvas 样式 */
         canvas.emscripten {
             display: block;
-            width: 100vw;
-            height: 100vh;
-            object-fit: contain;   /* 保持宽高比，完整显示，黑边填充 */
+            /* 初始 CSS 尺寸，JS 会在 postRun 中精确计算 */
+            width: 100vw; height: 100vh;
+            object-fit: contain;            /* 保持 16:9 比例，黑边填充 */
             background: #000;
-            touch-action: none;    /* 进一步消除触摸延迟 */
+            image-rendering: pixelated;     /* 像素风核心：最近邻缩放，不模糊 */
+            image-rendering: crisp-edges;   /* Firefox 兼容 */
+            touch-action: none;             /* Canvas 自身也需声明 */
         }
-        /* 针对横竖屏不同比例，确保canvas居中 */
-        @media (orientation: landscape) {
-            canvas.emscripten { width: 100vw; height: 100vh; }
+
+        /* 3. 加载遮罩层 */
+        #loading-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease;
         }
-        @media (orientation: portrait) {
-            canvas.emscripten { width: 100vw; height: 100vh; }
+        .loading-text {
+            color: #fff; font-family: 'Courier New', monospace; font-size: 14px; 
+            margin-bottom: 12px; opacity: 0.8; letter-spacing: 1px;
         }
+        .progress-bar-container {
+            width: 200px; height: 4px;
+            background: #333; border-radius: 2px; overflow: hidden;
+        }
+        .progress-bar-fill {
+            width: 0%; height: 100%;
+            background: #fff;
+            transition: width 0.2s ease;
+        }
+        .fade-out { opacity: 0; pointer-events: none; }
     </style>
 </head>
 <body>
-    <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
-    <script>
-        // 1. 定义 CDN 基础路径（请确保分支名 @main 与你仓库一致）
-        const CDN_BASE = 'https://cdn.jsdelivr.net/gh/Std-Git/SunnyLand@master/';
 
-        // 原有 Module 定义保持不变，仅增加 locateFile
+    <!-- 加载遮罩 -->
+    <div id="loading-overlay">
+        <div class="loading-text">LOADING ASSETS...</div>
+        <div class="progress-bar-container">
+            <div class="progress-bar-fill" id="progress-fill"></div>
+        </div>
+    </div>
+
+    <!-- 游戏画布 -->
+    <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+
+    <script>
+        // 4. CDN 基础路径（确保分支是 master）
+        const CDN_BASE = 'https://cdn.jsdelivr.net/gh/Std-Git/SunnyLand@master/';
+        
+        // DOM 元素
+        const overlay = document.getElementById('loading-overlay');
+        const progressFill = document.getElementById('progress-fill');
+
+        // 5. 游戏逻辑分辨率（GPU 实际渲染尺寸，手机性能关键！）
+        const GAME_WIDTH = 640;
+        const GAME_HEIGHT = 360;
+
         var Module = {
             preRun: [],
             postRun: [],
             
-            // 2. 关键：告诉 Emscripten 去 CDN 下载 .wasm 和 .data 文件
+            // 告诉 Emscripten 去 CDN 找文件
             locateFile: function(filename) {
                 return CDN_BASE + filename;
             },
@@ -58,22 +101,62 @@
                 if (arguments.length > 1) e = Array.prototype.slice.call(arguments).join(" "); 
                 console.error(e); 
             },
+
             canvas: (function() {
                 var canvas = document.getElementById('canvas');
+                // 禁用右键菜单
+                canvas.addEventListener('contextmenu', function(e) { e.preventDefault(); }, false);
+                // WebGL 上下文丢失处理
                 canvas.addEventListener('webglcontextlost', function(e) {
-                    alert('WebGL context lost. You will need to reload the page.');
+                    alert('WebGL context lost. Please reload.');
                     e.preventDefault();
                 }, false);
                 return canvas;
             })(),
-            setStatus: function(e) { if (e) console.log(e); },
-            totalDependencies: 0,
-            monitorRunDependencies: function(e) { this.totalDependencies = Math.max(this.totalDependencies, e); }
+
+            // 6. 进度监听：Emscripten 加载 .wasm 和 .data 时触发
+            monitorRunDependencies: function(remaining) {
+                if (remaining === 0) {
+                    // 加载完成，淡出遮罩
+                    overlay.classList.add('fade-out');
+                    setTimeout(() => overlay.style.display = 'none', 500);
+                } else {
+                    // 简单阶梯进度（通常 remaining 从 2 -> 1 -> 0）
+                    const percent = Math.max(0, Math.min(100, (1 - remaining / 3) * 100));
+                    progressFill.style.width = percent + '%';
+                }
+            },
+
+            // 7. 关键：禁止 Emscripten 自动拉伸 Canvas 内部尺寸
+            canvasResizeBehavior: 0, 
         };
-        window.onerror = function(e) { console.error('Exception thrown: ', e); };
+
+        // 8. 初始化 Canvas 内部尺寸（必须在 Emscripten 启动前设置）
+        Module.canvas.width = GAME_WIDTH;
+        Module.canvas.height = GAME_HEIGHT;
+
+        // 9. JS 兜底：拦截顽固的触摸事件
+        // 拦截双击缩放（iOS 特有）
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', function (e) {
+            const now = Date.now();
+            if (now - lastTouchEnd <= 300) { e.preventDefault(); }
+            lastTouchEnd = now;
+        }, { passive: false });
+
+        // 拦截多指缩放
+        document.addEventListener('touchstart', function (e) {
+            if (e.touches.length > 1) { e.preventDefault(); }
+        }, { passive: false });
+
+        // 拦截 iOS 特有的手势开始事件
+        document.addEventListener('gesturestart', function (e) { e.preventDefault(); }, { passive: false });
+
+        // 全局错误捕获
+        window.onerror = function(e) { console.error('Game Exception: ', e); };
     </script>
     
-    <!-- 3. 胶水代码也通过 CDN 加载 -->
+    <!-- 10. 异步加载 Emscripten 胶水代码 -->
     <script async src="https://cdn.jsdelivr.net/gh/Std-Git/SunnyLand@master/SunnyLand-Emscripten.js"></script>
 </body>
 </html>
