@@ -2,40 +2,53 @@
 <html lang="zh-CN">
 <head>
     <meta charset="utf-8">
-    <!-- 1. 彻底禁止浏览器缩放、双击放大、iOS 安全区适配 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>SunnyLand</title>
+
+    <!-- PWA 核心配置 -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#000000">
+    <!-- iOS PWA 支持 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="SunnyLand">
+
     <style>
         /* 全局重置 */
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        
+
         html, body {
             width: 100%; height: 100%;
             overflow: hidden;
             background: #000;
             display: flex; justify-content: center; align-items: center;
-            
-            /* 2. 核心触摸防护 */
-            touch-action: none;             /* 禁用所有原生手势（平移、缩放、双击） */
-            -webkit-touch-callout: none;    /* 禁用 iOS 长按弹出菜单 */
-            -webkit-user-select: none;      /* 禁用文本选择 */
+
+            /* 核心触摸防护 */
+            touch-action: none;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
             user-select: none;
-            overscroll-behavior: none;      /* 禁用 iOS/Android 橡皮筋回弹 */
+            overscroll-behavior: none;
         }
 
         /* Canvas 样式 */
         canvas.emscripten {
             display: block;
-            /* 初始 CSS 尺寸，JS 会在 postRun 中精确计算 */
             width: 100vw; height: 100vh;
-            object-fit: contain;            /* 保持 16:9 比例，黑边填充 */
+            object-fit: contain;
             background: #000;
-            image-rendering: pixelated;     /* 像素风核心：最近邻缩放，不模糊 */
-            image-rendering: crisp-edges;   /* Firefox 兼容 */
-            touch-action: none;             /* Canvas 自身也需声明 */
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            touch-action: none;
+            /* 消除点击高亮、焦点边框 */
+            -webkit-tap-highlight-color: transparent !important;
+            outline: none !important;
+            /* 强制硬件加速图层，提升渲染优先级 */
+            transform: translateZ(0);
+            will-change: transform;
         }
 
-        /* 3. 加载遮罩层 */
+        /* 加载遮罩层 */
         #loading-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: #000;
@@ -44,7 +57,7 @@
             transition: opacity 0.5s ease;
         }
         .loading-text {
-            color: #fff; font-family: 'Courier New', monospace; font-size: 14px; 
+            color: #fff; font-family: 'Courier New', monospace; font-size: 14px;
             margin-bottom: 12px; opacity: 0.8; letter-spacing: 1px;
         }
         .progress-bar-container {
@@ -57,6 +70,52 @@
             transition: width 0.2s ease;
         }
         .fade-out { opacity: 0; pointer-events: none; }
+
+        /* PWA 安装引导弹窗 */
+        #pwa-install-overlay {
+            display: none;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            z-index: 10000;
+            justify-content: center; align-items: center;
+            flex-direction: column;
+            backdrop-filter: blur(4px);
+        }
+        #pwa-install-box {
+            background: #222; border: 2px solid #fff; border-radius: 12px;
+            padding: 30px; max-width: 320px; text-align: center;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+        #pwa-install-box .pwa-icon { font-size: 40px; margin-bottom: 15px; }
+        #pwa-install-box h2 {
+            color: #fff; font-family: sans-serif; margin: 0 0 10px; font-size: 20px;
+        }
+        #pwa-install-box p {
+            color: #aaa; font-family: sans-serif; font-size: 14px; margin: 0 0 25px; line-height: 1.5;
+        }
+        #pwa-install-btn {
+            width: 100%; padding: 14px; border: none; border-radius: 8px;
+            background: #fff; color: #000; font-size: 16px; font-weight: bold;
+            cursor: pointer; margin-bottom: 10px;
+            transition: transform 0.1s;
+        }
+        #pwa-install-btn:active { transform: scale(0.95); }
+        #pwa-dismiss-btn {
+            width: 100%; padding: 10px; border: none; border-radius: 8px;
+            background: transparent; color: #888; font-size: 14px;
+            cursor: pointer;
+        }
+
+        /* 最佳体验提示条 */
+        #best-experience-tip {
+            display: none;
+            position: fixed; bottom: 0; left: 0; width: 100%;
+            background: rgba(0,0,0,0.9); color: #aaa;
+            font-family: sans-serif; font-size: 12px;
+            text-align: center; padding: 8px 12px;
+            z-index: 9998; line-height: 1.4;
+        }
+        #best-experience-tip span { color: #fff; }
     </style>
 </head>
 <body>
@@ -69,44 +128,61 @@
         </div>
     </div>
 
+    <!-- PWA 安装引导弹窗 -->
+    <div id="pwa-install-overlay">
+        <div id="pwa-install-box">
+            <div class="pwa-icon">&#127918;</div>
+            <h2>安装 SunnyLand</h2>
+            <p>添加到桌面，获得原生 App 般的流畅体验，<br>告别浏览器手势卡顿！</p>
+            <button id="pwa-install-btn">立即安装</button>
+            <button id="pwa-dismiss-btn">以后再说</button>
+        </div>
+    </div>
+
+    <!-- 最佳体验提示 -->
+    <div id="best-experience-tip">
+        <span>推荐 Chrome 或 Edge 浏览器打开，点击"添加到主屏幕"可获得最佳游戏体验</span>
+    </div>
+
     <!-- 游戏画布 -->
     <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
 
     <script>
-        // 4. CDN 基础路径（确保分支是 master）
+        // CDN 基础路径
         const CDN_BASE = 'https://cdn.jsdelivr.net/gh/Std-Git/SunnyLand@master/';
-        
+
         // DOM 元素
         const overlay = document.getElementById('loading-overlay');
         const progressFill = document.getElementById('progress-fill');
+        const installOverlay = document.getElementById('pwa-install-overlay');
+        const installBtn = document.getElementById('pwa-install-btn');
+        const dismissBtn = document.getElementById('pwa-dismiss-btn');
+        const bestTip = document.getElementById('best-experience-tip');
 
-        // 5. 游戏逻辑分辨率（GPU 实际渲染尺寸，手机性能关键！）
+        // 游戏逻辑分辨率
         const GAME_WIDTH = 640;
         const GAME_HEIGHT = 360;
 
         var Module = {
             preRun: [],
             postRun: [],
-            
-            // 告诉 Emscripten 去 CDN 找文件
+
             locateFile: function(filename) {
                 return CDN_BASE + filename;
             },
 
-            print: function(e) { 
-                if (arguments.length > 1) e = Array.prototype.slice.call(arguments).join(" "); 
-                console.log(e); 
+            print: function(e) {
+                if (arguments.length > 1) e = Array.prototype.slice.call(arguments).join(" ");
+                console.log(e);
             },
-            printErr: function(e) { 
-                if (arguments.length > 1) e = Array.prototype.slice.call(arguments).join(" "); 
-                console.error(e); 
+            printErr: function(e) {
+                if (arguments.length > 1) e = Array.prototype.slice.call(arguments).join(" ");
+                console.error(e);
             },
 
             canvas: (function() {
                 var canvas = document.getElementById('canvas');
-                // 禁用右键菜单
                 canvas.addEventListener('contextmenu', function(e) { e.preventDefault(); }, false);
-                // WebGL 上下文丢失处理
                 canvas.addEventListener('webglcontextlost', function(e) {
                     alert('WebGL context lost. Please reload.');
                     e.preventDefault();
@@ -114,29 +190,25 @@
                 return canvas;
             })(),
 
-            // 6. 进度监听：Emscripten 加载 .wasm 和 .data 时触发
+            // 进度监听
             monitorRunDependencies: function(remaining) {
                 if (remaining === 0) {
-                    // 加载完成，淡出遮罩
                     overlay.classList.add('fade-out');
                     setTimeout(() => overlay.style.display = 'none', 500);
                 } else {
-                    // 简单阶梯进度（通常 remaining 从 2 -> 1 -> 0）
                     const percent = Math.max(0, Math.min(100, (1 - remaining / 3) * 100));
                     progressFill.style.width = percent + '%';
                 }
             },
 
-            // 7. 关键：禁止 Emscripten 自动拉伸 Canvas 内部尺寸
-            canvasResizeBehavior: 0, 
+            canvasResizeBehavior: 0,
         };
 
-        // 8. 初始化 Canvas 内部尺寸（必须在 Emscripten 启动前设置）
+        // 初始化 Canvas 内部尺寸
         Module.canvas.width = GAME_WIDTH;
         Module.canvas.height = GAME_HEIGHT;
 
-        // 9. JS 兜底：拦截顽固的触摸事件
-        // 拦截双击缩放（iOS 特有）
+        // 拦截顽固的触摸事件
         let lastTouchEnd = 0;
         document.addEventListener('touchend', function (e) {
             const now = Date.now();
@@ -144,19 +216,75 @@
             lastTouchEnd = now;
         }, { passive: false });
 
-        // 拦截多指缩放
         document.addEventListener('touchstart', function (e) {
             if (e.touches.length > 1) { e.preventDefault(); }
         }, { passive: false });
 
-        // 拦截 iOS 特有的手势开始事件
         document.addEventListener('gesturestart', function (e) { e.preventDefault(); }, { passive: false });
 
         // 全局错误捕获
         window.onerror = function(e) { console.error('Game Exception: ', e); };
+
+        // ========== PWA 安装引导逻辑 ==========
+        let deferredPrompt = null;
+
+        // 检测是否为 iOS Safari（不支持 beforeinstallprompt，但支持添加到主屏幕）
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+
+            // 用户点过"以后再说"且未超过7天，不弹窗
+            const dismissed = localStorage.getItem('pwa-dismissed');
+            if (dismissed && (Date.now() - parseInt(dismissed)) < 7 * 24 * 60 * 60 * 1000) {
+                return;
+            }
+
+            installOverlay.style.display = 'flex';
+        });
+
+        // 点击"立即安装"
+        installBtn.addEventListener('click', async () => {
+            if (!deferredPrompt) return;
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            console.log('PWA 用户选择: ' + outcome);
+            installOverlay.style.display = 'none';
+            deferredPrompt = null;
+        });
+
+        // 点击"以后再说"
+        dismissBtn.addEventListener('click', () => {
+            installOverlay.style.display = 'none';
+            deferredPrompt = null;
+            localStorage.setItem('pwa-dismissed', Date.now().toString());
+        });
+
+        // 安装成功后自动关闭弹窗
+        window.addEventListener('appinstalled', () => {
+            installOverlay.style.display = 'none';
+            deferredPrompt = null;
+            console.log('PWA 安装成功！');
+        });
+
+        // iOS 提示：显示底部引导条
+        if (isIOS) {
+            // iOS 不支持 beforeinstallprompt，显示手动引导
+            setTimeout(() => {
+                bestTip.style.display = 'block';
+            }, 2000);
+        } else {
+            // Android/其他平台：如果 PWA 未触发（不支持或已安装），显示引导
+            setTimeout(() => {
+                if (!deferredPrompt && localStorage.getItem('pwa-dismissed')) {
+                    bestTip.style.display = 'block';
+                }
+            }, 3000);
+        }
     </script>
-    
-    <!-- 10. 异步加载 Emscripten 胶水代码 -->
+
+    <!-- 异步加载 Emscripten 胶水代码 -->
     <script async src="https://cdn.jsdelivr.net/gh/Std-Git/SunnyLand@master/SunnyLand-Emscripten.js"></script>
 </body>
 </html>
