@@ -132,7 +132,7 @@
                  "type":"",
                  "visible":true,
                  "width":36,
-                 "x":336,
+                 "x":352,
                  "y":160
                 }, 
                 {
@@ -206,18 +206,6 @@
                  "width":15,
                  "x":688,
                  "y":128
-                }, 
-                {
-                 "gid":579,
-                 "height":32,
-                 "id":17,
-                 "name":"player2",
-                 "rotation":0,
-                 "type":"",
-                 "visible":true,
-                 "width":32,
-                 "x":784,
-                 "y":160
                 }, 
                 {
                  "gid":580,
