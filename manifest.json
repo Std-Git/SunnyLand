@@ -3,7 +3,7 @@
   "short_name": "SunnyLand",
   "description": "A pixel-art platformer game built with SDL3 and Emscripten.",
   "start_url": "/SunnyLand/",
-  "display": "fullscreen",
+  "display": "standalone",
   "orientation": "landscape",
   "background_color": "#000000",
   "theme_color": "#000000",
