@@ -1,1 +1,280 @@
-<!doctypehtml><html lang=en-us><head><meta charset=utf-8><meta content="text/html; charset=utf-8"http-equiv=Content-Type><title>SunnyLand</title><style>body{margin:0;padding:0;background-color:#000;overflow:hidden;display:flex;justify-content:center;align-items:center;height:100vh;width:100vw}canvas.emscripten{border:0 none;background-color:#000;display:block}</style></head><body><canvas class=emscripten id=canvas oncontextmenu=event.preventDefault()></canvas><script>var Module={preRun:[],postRun:[],print:function(e){arguments.length>1&&(e=Array.prototype.slice.call(arguments).join(" ")),console.log(e)},printErr:function(e){arguments.length>1&&(e=Array.prototype.slice.call(arguments).join(" ")),console.error(e)},canvas:function(){var e=document.getElementById("canvas");return e.addEventListener("webglcontextlost",(function(e){alert("WebGL context lost. You will need to reload the page."),e.preventDefault()}),!1),e}(),setStatus:function(e){e&&console.log(e)},totalDependencies:0,monitorRunDependencies:function(e){this.totalDependencies=Math.max(this.totalDependencies,e)}};window.onerror=function(e){console.error("Exception thrown: ",e)}</script><script async src=SunnyLand-Emscripten.js></script></body></html>
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    
+    <!-- 1. 彻底禁止浏览器缩放、双击放大、iOS 安全区适配 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    
+    <title>SunnyLand</title>
+    
+    <!-- 2. PWA 核心配置 -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#000000">
+    
+    <!-- 3. iOS PWA 专属支持 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="SunnyLand">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    
+    <style>
+        /* 全局重置 */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        html, body {
+            width: 100%; height: 100%;
+            overflow: hidden;
+            background: #000;
+            display: flex; justify-content: center; align-items: center;
+            
+            /* 触摸防护 */
+            touch-action: none;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            overscroll-behavior: none;
+        }
+
+        /* 
+         * Canvas 样式 - 关键修复：
+         * 移除了 transform: translateZ(0)  → 避免强制 GPU 合成层导致 WebGL 条纹
+         * 移除了 will-change: transform    → 避免提前创建合成层干扰渲染
+         * 移除了 object-fit: contain       → 避免浏览器将 canvas 当图片处理
+         * 改用 JS 动态计算尺寸维持宽高比（见下方 <script>）
+         */
+        canvas.emscripten {
+            display: block;
+            background: #000;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            touch-action: none;
+            -webkit-tap-highlight-color: transparent !important;
+            outline: none !important;
+            /* 已移除这些属性，改用 JS 维持宽高比 */
+        }
+
+        /* 加载遮罩层样式 */
+        #loading-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease;
+        }
+        .loading-text {
+            color: #fff; font-family: 'Courier New', monospace; font-size: 14px; 
+            margin-bottom: 12px; opacity: 0.8; letter-spacing: 1px;
+        }
+        .progress-bar-container {
+            width: 200px; height: 4px;
+            background: #333; border-radius: 2px; overflow: hidden;
+        }
+        .progress-bar-fill {
+            width: 0%; height: 100%;
+            background: #fff;
+            transition: width 0.2s ease;
+        }
+        .fade-out { opacity: 0; pointer-events: none; }
+    </style>
+</head>
+<body>
+
+    <!-- 加载遮罩 -->
+    <div id="loading-overlay">
+        <div class="loading-text">LOADING ASSETS...</div>
+        <div class="progress-bar-container">
+            <div class="progress-bar-fill" id="progress-fill"></div>
+        </div>
+    </div>
+
+    <!-- 游戏画布 -->
+    <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+
+    <!-- PWA 安装引导弹窗 (Android 专属) -->
+    <div id="pwa-install-overlay" style="
+        display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.85); z-index: 10000;
+        justify-content: center; align-items: center; flex-direction: column;
+        backdrop-filter: blur(4px);
+    ">
+        <div style="
+            background: #222; border: 2px solid #fff; border-radius: 12px;
+            padding: 30px; max-width: 320px; text-align: center;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        ">
+            <div style="font-size: 40px; margin-bottom: 15px;"></div>
+            <h2 style="color: #fff; font-family: sans-serif; margin: 0 0 10px; font-size: 20px;">
+                安装 SunnyLand
+            </h2>
+            <p style="color: #aaa; font-family: sans-serif; font-size: 14px; margin: 0 0 25px; line-height: 1.5;">
+                添加到桌面，获得原生 App 般的流畅体验，<br>告别浏览器手势卡顿！
+            </p>
+            <button id="pwa-install-btn" style="
+                width: 100%; padding: 14px; border: none; border-radius: 8px;
+                background: #fff; color: #000; font-size: 16px; font-weight: bold;
+                cursor: pointer; margin-bottom: 10px; transition: transform 0.1s;
+            " onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)'">
+                立即安装
+            </button>
+            <button id="pwa-dismiss-btn" style="
+                width: 100%; padding: 10px; border: none; border-radius: 8px;
+                background: transparent; color: #888; font-size: 14px; cursor: pointer;
+            ">
+                以后再说
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // CDN 基础路径
+        const CDN_BASE = 'https://cdn.jsdelivr.net/gh/Std-Git/SunnyLand@master/';
+        
+        // DOM 元素
+        const overlay = document.getElementById('loading-overlay');
+        const progressFill = document.getElementById('progress-fill');
+
+        // 游戏逻辑分辨率（GPU 实际渲染尺寸）
+        const GAME_WIDTH = 640;
+        const GAME_HEIGHT = 360;
+
+        var Module = {
+            preRun: [],
+            postRun: [],
+            
+            locateFile: function(filename) {
+                return CDN_BASE + filename;
+            },
+
+            print: function(e) { 
+                if (arguments.length > 1) e = Array.prototype.slice.call(arguments).join(" "); 
+                console.log(e); 
+            },
+            printErr: function(e) { 
+                if (arguments.length > 1) e = Array.prototype.slice.call(arguments).join(" "); 
+                console.error(e); 
+            },
+
+            canvas: (function() {
+                var canvas = document.getElementById('canvas');
+                canvas.addEventListener('contextmenu', function(e) { e.preventDefault(); }, false);
+                canvas.addEventListener('webglcontextlost', function(e) {
+                    alert('WebGL context lost. Please reload.');
+                    e.preventDefault();
+                }, false);
+                return canvas;
+            })(),
+
+            monitorRunDependencies: function(remaining) {
+                if (remaining === 0) {
+                    overlay.classList.add('fade-out');
+                    setTimeout(() => overlay.style.display = 'none', 500);
+                } else {
+                    const percent = Math.max(0, Math.min(100, (1 - remaining / 3) * 100));
+                    progressFill.style.width = percent + '%';
+                }
+            },
+
+            canvasResizeBehavior: 0, 
+        };
+
+        // 初始化 Canvas 内部尺寸
+        Module.canvas.width = GAME_WIDTH;
+        Module.canvas.height = GAME_HEIGHT;
+
+        /**
+         * 【关键修复】用 JS 动态计算 canvas 显示尺寸，维持 16:9 宽高比
+         * 替代 CSS 的 object-fit: contain + transform: translateZ(0)
+         * 这样不会触发 GPU 合成层，避免 WebGL 条纹
+         */
+        function resizeCanvas() {
+            const canvas = Module.canvas;
+            const containerWidth = window.innerWidth;
+            const containerHeight = window.innerHeight;
+            const aspect = GAME_WIDTH / GAME_HEIGHT; // 16:9 = 1.777...
+
+            let displayWidth, displayHeight;
+
+            if (containerWidth / containerHeight > aspect) {
+                // 容器更宽 → 以高度为基准
+                displayHeight = containerHeight;
+                displayWidth = Math.floor(displayHeight * aspect);
+            } else {
+                // 容器更高 → 以宽度为基准
+                displayWidth = containerWidth;
+                displayHeight = Math.floor(displayWidth / aspect);
+            }
+
+            // 设置 CSS 显示尺寸（不触发合成层）
+            canvas.style.width = displayWidth + 'px';
+            canvas.style.height = displayHeight + 'px';
+        }
+
+        // 页面加载和窗口大小变化时重新计算
+        window.addEventListener('load', resizeCanvas);
+        window.addEventListener('resize', resizeCanvas);
+        // 某些浏览器在 orientationchange 时不会触发 resize
+        window.addEventListener('orientationchange', resizeCanvas);
+
+        // JS 兜底：拦截顽固的触摸事件
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', function (e) {
+            const now = Date.now();
+            if (now - lastTouchEnd <= 300) { e.preventDefault(); }
+            lastTouchEnd = now;
+        }, { passive: false });
+
+        document.addEventListener('touchstart', function (e) {
+            if (e.touches.length > 1) { e.preventDefault(); }
+        }, { passive: false });
+
+        document.addEventListener('gesturestart', function (e) { e.preventDefault(); }, { passive: false });
+
+        // 全局错误捕获
+        window.onerror = function(e) { console.error('Game Exception: ', e); };
+    </script>
+    
+    <!-- 异步加载 Emscripten 胶水代码 -->
+    <script async src="https://cdn.jsdelivr.net/gh/Std-Git/SunnyLand@master/SunnyLand-Emscripten.js"></script>
+
+    <!-- PWA 安装引导逻辑 -->
+    <script>
+        let deferredPrompt = null;
+        const installOverlay = document.getElementById('pwa-install-overlay');
+        const installBtn = document.getElementById('pwa-install-btn');
+        const dismissBtn = document.getElementById('pwa-dismiss-btn');
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            
+            const dismissed = localStorage.getItem('pwa-dismissed');
+            if (dismissed && (Date.now() - parseInt(dismissed)) < 7 * 24 * 60 * 60 * 1000) {
+                return;
+            }
+            installOverlay.style.display = 'flex';
+        });
+
+        installBtn.addEventListener('click', async () => {
+            if (!deferredPrompt) return;
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            console.log(`用户选择: ${outcome}`);
+            installOverlay.style.display = 'none';
+            deferredPrompt = null;
+        });
+
+        dismissBtn.addEventListener('click', () => {
+            installOverlay.style.display = 'none';
+            deferredPrompt = null;
+            localStorage.setItem('pwa-dismissed', Date.now().toString());
+        });
+
+        window.addEventListener('appinstalled', () => {
+            installOverlay.style.display = 'none';
+            deferredPrompt = null;
+            console.log('PWA 安装成功！');
+        });
+    </script>
+</body>
+</html>
