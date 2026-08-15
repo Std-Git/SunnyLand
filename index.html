@@ -239,7 +239,7 @@
             standaloneNotice.style.display = 'none';
         });
 
-        var Module = {\
+        var Module = {
             preRun: [],
             postRun: [],
             
@@ -451,18 +451,20 @@
         const dismissBtn = document.getElementById('pwa-dismiss-btn');
 
         window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
+            // 不阻止默认行为，让浏览器显示原生安装提示
             deferredPrompt = e;
             
             const dismissed = localStorage.getItem('pwa-dismissed');
             if (dismissed && (Date.now() - parseInt(dismissed)) < 7 * 24 * 60 * 60 * 1000) {
                 return;
             }
+            // 只在浏览器不支持原生提示时才显示自定义弹窗
             installOverlay.style.display = 'flex';
         });
 
         installBtn.addEventListener('click', async () => {
             if (!deferredPrompt) return;
+            // 先尝试调用浏览器原生安装提示
             deferredPrompt.prompt();
             const { outcome } = await deferredPrompt.userChoice;
             console.log('用户选择: ' + outcome);
