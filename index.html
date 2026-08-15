@@ -19,8 +19,17 @@
     <meta name="apple-mobile-web-app-title" content="SunnyLand">
     <link rel="apple-touch-icon" href="icon-192.png">
     
+    <!-- 4. MIUI / UC 浏览器全屏模式专属标签（关键！） -->
+    <!-- 让 MIUI 的浏览器以全屏应用模式打开，不显示地址栏和导航栏 -->
+    <meta name="full-screen" content="yes">
+    <meta name="browsermode" content="application">
+    <meta name="x5-fullscreen" content="true">
+    <meta name="x5-page-mode" content="app">
+    <!-- UC 浏览器全屏模式 -->
+    <meta name="uc-full-screen" content="true">
+    <meta name="uc-browser-mode" content="NORANDOM-WEBVIEW">
+    
     <!-- 【关键修复】提前拦截 AudioContext，在 Emscripten 加载之前 -->
-    <!-- 必须在 Emscripten 创建 AudioContext 之前执行，否则无法捕获实例 -->
     <script>
         let currentAudioContext = null;
         (function() {
@@ -57,15 +66,23 @@
             background: #000;
             display: flex; justify-content: center; align-items: center;
             
-            /* 触摸防护 - 关键：禁止所有触摸手势，替代 JS 中的 preventDefault hack */
-            touch-action: manipulation;
+            /* 
+             * 【关键修复】MIUI 上 touch-action: manipulation 仍有 300ms 延迟
+             * 改为 touch-action: none 彻底禁止所有触摸手势
+             * 用 JS 精确控制触摸行为，避免浏览器猜测用户意图
+             */
+            touch-action: none;
             -webkit-touch-callout: none;
             -webkit-user-select: none;
             user-select: none;
             overscroll-behavior: none;
+            /* 禁止 MIUI 的长按菜单和选中文本 */
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
         }
 
-        /* Canvas 样式 */
+        /* Canvas 样式 - 不触发 GPU 合成层 */
         canvas.emscripten {
             display: block;
             background: #000;
@@ -98,6 +115,46 @@
             transition: width 0.2s ease;
         }
         .fade-out { opacity: 0; pointer-events: none; }
+        
+        /* PWA 安装引导弹窗 */
+        #pwa-install-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); z-index: 10000;
+            justify-content: center; align-items: center; flex-direction: column;
+            backdrop-filter: blur(4px);
+        }
+        
+        /* 非独立模式提示弹窗 */
+        #standalone-notice {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); z-index: 10001;
+            justify-content: center; align-items: center; flex-direction: column;
+            padding: 20px;
+        }
+        #standalone-notice .notice-box {
+            background: #1a1a2e; border: 2px solid #4a4a8a; border-radius: 16px;
+            padding: 30px; max-width: 360px; text-align: center;
+            box-shadow: 0 0 30px rgba(74,74,138,0.3);
+        }
+        #standalone-notice h2 {
+            color: #fff; font-family: sans-serif; margin: 0 0 15px; font-size: 20px;
+        }
+        #standalone-notice p {
+            color: #aaa; font-family: sans-serif; font-size: 14px; margin: 0 0 10px; 
+            line-height: 1.6; text-align: left;
+        }
+        #standalone-notice ol {
+            color: #ccc; font-family: sans-serif; font-size: 13px; margin: 10px 0 20px; 
+            padding-left: 20px; text-align: left; line-height: 1.8;
+        }
+        #standalone-notice button {
+            width: 100%; padding: 14px; border: none; border-radius: 8px;
+            background: #4a4a8a; color: #fff; font-size: 16px; font-weight: bold;
+            cursor: pointer; margin-top: 10px;
+        }
+        #standalone-notice button:active {
+            background: #6a6aaa;
+        }
     </style>
 </head>
 <body>
@@ -110,21 +167,23 @@
         </div>
     </div>
 
-    <!-- 游戏画布 -->
-    <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+    <!-- 非独立模式提示 -->
+    <div id="standalone-notice">
+        <div class="notice-box">
+            <h2>请安装为独立应用</h2>
+            <p>当前页面在浏览器标签页中运行，触摸响应可能较慢。为获得最佳游戏体验，请安装为独立应用：</p>
+            <ol>
+                <li>点击浏览器右上角 <strong>⋮</strong>（三个点）</li>
+                <li>选择 <strong>"安装应用"</strong> 或 <strong>"添加到主屏幕"</strong></li>
+                <li>点击桌面图标 <strong>SunnyLand</strong> 打开</li>
+            </ol>
+            <button id="standalone-ok-btn">我知道了</button>
+        </div>
+    </div>
 
     <!-- PWA 安装引导弹窗 (Android 专属) -->
-    <div id="pwa-install-overlay" style="
-        display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        background: rgba(0,0,0,0.85); z-index: 10000;
-        justify-content: center; align-items: center; flex-direction: column;
-        backdrop-filter: blur(4px);
-    ">
-        <div style="
-            background: #222; border: 2px solid #fff; border-radius: 12px;
-            padding: 30px; max-width: 320px; text-align: center;
-            box-shadow: 0 0 20px rgba(0,0,0,0.5);
-        ">
+    <div id="pwa-install-overlay" style="display:none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 10000; justify-content: center; align-items: center; flex-direction: column; backdrop-filter: blur(4px);">
+        <div style="background: #222; border: 2px solid #fff; border-radius: 12px; padding: 30px; max-width: 320px; text-align: center; box-shadow: 0 0 20px rgba(0,0,0,0.5);">
             <div style="font-size: 40px; margin-bottom: 15px;"></div>
             <h2 style="color: #fff; font-family: sans-serif; margin: 0 0 10px; font-size: 20px;">
                 安装 SunnyLand
@@ -132,21 +191,17 @@
             <p style="color: #aaa; font-family: sans-serif; font-size: 14px; margin: 0 0 25px; line-height: 1.5;">
                 添加到桌面，获得原生 App 般的流畅体验，<br>告别浏览器手势卡顿！
             </p>
-            <button id="pwa-install-btn" style="
-                width: 100%; padding: 14px; border: none; border-radius: 8px;
-                background: #fff; color: #000; font-size: 16px; font-weight: bold;
-                cursor: pointer; margin-bottom: 10px; transition: transform 0.1s;
-            " onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)')">
+            <button id="pwa-install-btn" style="width: 100%; padding: 14px; border: none; border-radius: 8px; background: #fff; color: #000; font-size: 16px; font-weight: bold; cursor: pointer; margin-bottom: 10px; transition: transform 0.1s;" onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)'">
                 立即安装
             </button>
-            <button id="pwa-dismiss-btn" style="
-                width: 100%; padding: 10px; border: none; border-radius: 8px;
-                background: transparent; color: #888; font-size: 14px; cursor: pointer;
-            ">
+            <button id="pwa-dismiss-btn" style="width: 100%; padding: 10px; border: none; border-radius: 8px; background: transparent; color: #888; font-size: 14px; cursor: pointer;">
                 以后再说
             </button>
         </div>
     </div>
+
+    <!-- 游戏画布 -->
+    <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
 
     <script>
         // CDN 基础路径
@@ -155,12 +210,36 @@
         // DOM 元素
         const overlay = document.getElementById('loading-overlay');
         const progressFill = document.getElementById('progress-fill');
+        const standaloneNotice = document.getElementById('standalone-notice');
+        const standaloneOkBtn = document.getElementById('standalone-ok-btn');
 
         // 游戏逻辑分辨率（GPU 实际渲染尺寸）
         const GAME_WIDTH = 640;
         const GAME_HEIGHT = 360;
 
-        var Module = {
+        // === 【关键修复】PWA 独立模式检测 ===
+        // 检测当前是否在独立模式下运行（PWA 已安装并独立打开）
+        function isInStandaloneMode() {
+            return (
+                window.matchMedia('(display-mode: standalone)').matches ||
+                window.navigator.standalone === true ||
+                document.referrer.includes('android-app://')
+            );
+        }
+
+        // 如果不在独立模式下，显示安装引导
+        if (!isInStandaloneMode()) {
+            // 延迟显示，让用户先看到加载页面
+            setTimeout(function() {
+                standaloneNotice.style.display = 'flex';
+            }, 2000);
+        }
+
+        standaloneOkBtn.addEventListener('click', function() {
+            standaloneNotice.style.display = 'none';
+        });
+
+        var Module = {\
             preRun: [],
             postRun: [],
             
@@ -184,7 +263,7 @@
                     alert('WebGL context lost. Please reload.');
                     e.preventDefault();
                 }, false);
-                // MIUI 上 touchend 可能被丢失，用 touchcancel + mouseup 作为兜底确保按钮状态被释放
+                // MIUI 上 touchend 可能被丢失，用 touchcancel + mouseup 作为兜底
                 canvas.addEventListener('touchcancel', function(e) {
                     // 让浏览器执行默认的 touchcancel 行为（释放触摸状态）
                 }, false);
@@ -198,6 +277,8 @@
                 if (remaining === 0) {
                     overlay.classList.add('fade-out');
                     setTimeout(() => overlay.style.display = 'none', 500);
+                    // 加载完成后尝试请求全屏（需要用户手势后才能成功）
+                    requestFullscreen();
                 } else {
                     const percent = Math.max(0, Math.min(100, (1 - remaining / 3) * 100));
                     progressFill.style.width = percent + '%';
@@ -207,10 +288,86 @@
             canvasResizeBehavior: 0, 
         };
 
-        // === 【关键修复】MIUI 触摸热启动 ===
-        // 在页面加载时触发一次 touchstart，"预热" MIUI 的触摸处理管线
-        // 消除首次触摸的 300ms 延迟，passive: true 不会引入延迟
-        document.addEventListener('touchstart', function() {}, { passive: true });
+        // === 【关键修复】全屏 API 请求 ===
+        // 在用户交互后尝试进入全屏，隐藏浏览器地址栏
+        function requestFullscreen() {
+            var elem = document.documentElement;
+            try {
+                if (elem.requestFullscreen) {
+                    elem.requestFullscreen();
+                } else if (elem.webkitRequestFullscreen) { // Safari / iOS
+                    elem.webkitRequestFullscreen();
+                } else if (elem.msRequestFullscreen) { // IE11
+                    elem.msRequestFullscreen();
+                }
+            } catch(e) {
+                console.log('[PWA] Fullscreen request failed:', e);
+            }
+        }
+
+        // 在用户首次触摸/点击时请求全屏（浏览器要求必须有用户手势）
+        var fullscreenRequested = false;
+        function tryFullscreenOnInteraction() {
+            if (!fullscreenRequested) {
+                fullscreenRequested = true;
+                requestFullscreen();
+                // 移除监听器
+                document.removeEventListener('touchstart', tryFullscreenOnInteraction, {passive: true});
+                document.removeEventListener('mousedown', tryFullscreenOnInteraction, {passive: true});
+            }
+        }
+        document.addEventListener('touchstart', tryFullscreenOnInteraction, {passive: true});
+        document.addEventListener('mousedown', tryFullscreenOnInteraction, {passive: true});
+
+        // === 【关键修复】零延迟触摸处理 ===
+        // 使用 passive: false 的 touchstart/touchmove/touchend 监听器
+        // 对 canvas 上的触摸事件立即 preventDefault，阻止浏览器猜测用户意图
+        // 这样浏览器不会等待 300ms 来判断是 tap 还是 scroll
+        
+        // 记录触摸状态
+        var touchTargets = new Map(); // 记录每个触摸点的起始位置
+        
+        canvas.addEventListener('touchstart', function(e) {
+            // 记录每个触摸点的起始位置
+            for (var i = 0; i < e.changedTouches.length; i++) {
+                var touch = e.changedTouches[i];
+                touchTargets.set(touch.identifier, {
+                    startX: touch.clientX,
+                    startY: touch.clientY,
+                    startTime: Date.now()
+                });
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', function(e) {
+            // 如果触摸点在 canvas 上移动超过 10px，认为是拖拽而非点击
+            // 这种情况下 preventDefault 阻止页面滚动
+            for (var i = 0; i < e.changedTouches.length; i++) {
+                var touch = e.changedTouches[i];
+                var info = touchTargets.get(touch.identifier);
+                if (info) {
+                    var dx = touch.clientX - info.startX;
+                    var dy = touch.clientY - info.startY;
+                    var distance = Math.sqrt(dx*dx + dy*dy);
+                    if (distance > 10) {
+                        e.preventDefault(); // 阻止页面滚动
+                    }
+                }
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', function(e) {
+            // 清除触摸记录
+            for (var i = 0; i < e.changedTouches.length; i++) {
+                var touch = e.changedTouches[i];
+                touchTargets.delete(touch.identifier);
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchcancel', function(e) {
+            // 清除所有触摸记录
+            touchTargets.clear();
+        }, { passive: false });
 
         // 初始化 Canvas 内部尺寸
         Module.canvas.width = GAME_WIDTH;
@@ -251,17 +408,13 @@
         window.addEventListener('orientationchange', resizeCanvas);
 
         // === App 可见性管理：后台暂停音频 ===
-        // 解决后台音乐继续播放问题
-
         document.addEventListener('visibilitychange', function() {
             if (document.hidden) {
-                // App 进入后台
                 console.log('[PWA] App went to background, pausing audio');
                 if (currentAudioContext && currentAudioContext.state !== 'closed') {
                     currentAudioContext.suspend();
                 }
             } else {
-                // App 回到前台
                 console.log('[PWA] App came to foreground, resuming audio');
                 if (currentAudioContext && currentAudioContext.state === 'suspended') {
                     currentAudioContext.resume();
@@ -269,7 +422,6 @@
             }
         });
 
-        // 兜底：pagehide / resume 事件（部分 Android 浏览器在 PWA 模式下更可靠）
         window.addEventListener('pagehide', function() {
             console.log('[PWA] pagehide event');
             if (currentAudioContext && currentAudioContext.state !== 'closed') {
@@ -313,12 +465,12 @@
             if (!deferredPrompt) return;
             deferredPrompt.prompt();
             const { outcome } = await deferredPrompt.userChoice;
-            console.log(`用户选择: ${outcome}`);
+            console.log('用户选择: ' + outcome);
             installOverlay.style.display = 'none';
             deferredPrompt = null;
         });
 
-        dismissBtn.addEventListener('click', () {
+        dismissBtn.addEventListener('click', () => {
             installOverlay.style.display = 'none';
             deferredPrompt = null;
             localStorage.setItem('pwa-dismissed', Date.now().toString());
