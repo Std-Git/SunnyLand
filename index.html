@@ -13,6 +13,7 @@
     <meta name="theme-color" content="#000000">
     
     <!-- 3. iOS PWA 专属支持 -->
+    <meta name="msapplication-tap-highlight" content="no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="SunnyLand">
@@ -57,7 +58,7 @@
             display: flex; justify-content: center; align-items: center;
             
             /* 触摸防护 - 关键：禁止所有触摸手势，替代 JS 中的 preventDefault hack */
-            touch-action: none;
+            touch-action: manipulation;
             -webkit-touch-callout: none;
             -webkit-user-select: none;
             user-select: none;
@@ -183,6 +184,13 @@
                     alert('WebGL context lost. Please reload.');
                     e.preventDefault();
                 }, false);
+                // MIUI 上 touchend 可能被丢失，用 touchcancel + mouseup 作为兜底确保按钮状态被释放
+                canvas.addEventListener('touchcancel', function(e) {
+                    // 让浏览器执行默认的 touchcancel 行为（释放触摸状态）
+                }, false);
+                canvas.addEventListener('mouseup', function(e) {
+                    // 兜底释放：确保鼠标抬起时游戏能收到释放事件
+                }, false);
                 return canvas;
             })(),
 
@@ -198,6 +206,11 @@
 
             canvasResizeBehavior: 0, 
         };
+
+        // === 【关键修复】MIUI 触摸热启动 ===
+        // 在页面加载时触发一次 touchstart，"预热" MIUI 的触摸处理管线
+        // 消除首次触摸的 300ms 延迟，passive: true 不会引入延迟
+        document.addEventListener('touchstart', function() {}, { passive: true });
 
         // 初始化 Canvas 内部尺寸
         Module.canvas.width = GAME_WIDTH;
@@ -237,69 +250,19 @@
         // 某些浏览器在 orientationchange 时不会触发 resize
         window.addEventListener('orientationchange', resizeCanvas);
 
-        // === 【关键修复】App 可见性管理：后台暂停音频 + 输入过滤 ===
-        // 解决三个问题：
-        // 1. 后台音乐继续播放 → visibilitychange 时暂停 AudioContext
-        // 2. 后台点击触发音效 → 仅在后台时挂载输入过滤拦截器
-        // 3. 触摸延迟 → 输入过滤器仅在后台挂载，前台不挂载以避免 passive:false 延迟
-
-        let isAppVisible = true;
-        let inputFilterActive = false;
-        var inputFilterTouchStart = null;
-        var inputFilterTouchEnd = null;
-
-        function onInputTouchStart(e) {
-            if (!isAppVisible) {
-                e.preventDefault();
-            }
-        }
-
-        function onInputTouchEnd(e) {
-            if (!isAppVisible) {
-                e.preventDefault();
-            }
-        }
-
-        function enableInputFilter() {
-            if (inputFilterActive) return;
-            inputFilterTouchStart = onInputTouchStart;
-            inputFilterTouchEnd = onInputTouchEnd;
-            document.addEventListener('touchstart', inputFilterTouchStart, { passive: false });
-            document.addEventListener('touchend', inputFilterTouchEnd, { passive: false });
-            inputFilterActive = true;
-        }
-
-        function disableInputFilter() {
-            if (!inputFilterActive) return;
-            if (inputFilterTouchStart) {
-                document.removeEventListener('touchstart', inputFilterTouchStart);
-                inputFilterTouchStart = null;
-            }
-            if (inputFilterTouchEnd) {
-                document.removeEventListener('touchend', inputFilterTouchEnd);
-                inputFilterTouchEnd = null;
-            }
-            inputFilterActive = false;
-        }
+        // === App 可见性管理：后台暂停音频 ===
+        // 解决后台音乐继续播放问题
 
         document.addEventListener('visibilitychange', function() {
-            isAppVisible = !document.hidden;
-            
             if (document.hidden) {
                 // App 进入后台
                 console.log('[PWA] App went to background, pausing audio');
-                // 暂停 AudioContext（停止所有音频播放）
                 if (currentAudioContext && currentAudioContext.state !== 'closed') {
                     currentAudioContext.suspend();
                 }
-                // 挂载输入过滤拦截器（防止后台触摸事件触发游戏输入/音效）
-                enableInputFilter();
             } else {
                 // App 回到前台
                 console.log('[PWA] App came to foreground, resuming audio');
-                // 移除输入过滤拦截器（避免 passive: false 在前台引入触摸延迟）
-                disableInputFilter();
-                // 恢复 AudioContext
                 if (currentAudioContext && currentAudioContext.state === 'suspended') {
                     currentAudioContext.resume();
                 }
@@ -312,25 +275,14 @@
             if (currentAudioContext && currentAudioContext.state !== 'closed') {
                 currentAudioContext.suspend();
             }
-            enableInputFilter();
         });
 
         window.addEventListener('resume', function() {
             console.log('[PWA] resume event');
-            disableInputFilter();
             if (currentAudioContext && currentAudioContext.state === 'suspended') {
                 currentAudioContext.resume();
             }
         });
-
-        // === 【关键修复】已移除以下导致触摸延迟的冗余代码 ===
-        // 1. touchend preventDefault 防抖 hack（300ms 窗口检测）
-        //    → 在 Redmi/MIUI 设备上导致严重触摸延迟，CSS touch-action: none 已完全替代
-        // 2. gesturestart preventDefault
-        //    → 与 CSS touch-action: none 重复，且 passive: false 引入延迟
-        // 3. touchstart 多点触控 preventDefault
-        //    → 与 CSS touch-action: none 重复，且 passive: false 引入延迟
-        // 4. 输入过滤器不再常驻前台，仅在后台挂载（避免 passive: false 的等待开销）
 
         // 全局错误捕获
         window.onerror = function(e) { console.error('Game Exception: ', e); };
